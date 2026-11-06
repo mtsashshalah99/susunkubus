@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Petualangan Menara Kubus - Fisika & Keseimbangan</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Matter.js Physics Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            font-family: 'Fredoka', cursive, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+            touch-action: none;
+            overflow: hidden;
+        }
+
+        /* Container Rasio 16:9 modern */
+        .game-wrapper {
+            width: 100%;
+            max-width: 1100px;
+            aspect-ratio: 16 / 9;
+            box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.25);
+        }
+
+        #game-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #93c5fd;
+            border-radius: 4px;
+        }
+
+        @keyframes starPop {
+            0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+            80% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0); opacity: 1; }
+        }
+
+        .star-anim {
+            animation: starPop 0.5s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex items-center justify-center p-2 sm:p-4 select-none">
+
+    <!-- Game Main Container (Rasio 16:9) -->
+    <div class="game-wrapper bg-sky-100 rounded-3xl border-4 border-white relative overflow-hidden flex flex-col">
+        
+        <!-- Header / Bar Navigasi Atas -->
+        <header class="h-14 sm:h-16 bg-white/85 backdrop-blur-md px-4 flex items-center justify-between border-b-2 border-sky-200 z-20">
+            <!-- Info Level & Instruksi -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <button onclick="openLevelSelect()" class="bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold px-3 py-1.5 rounded-2xl shadow-md transition active:scale-95 flex items-center gap-2 text-xs sm:text-sm">
+                    <i class="fa-solid fa-layer-group"></i>
+                    <span id="level-title-display">Level 1</span>
+                </button>
+                <div class="hidden sm:flex items-center gap-2 bg-sky-200/60 px-3 py-1 rounded-full text-sky-900 text-xs sm:text-sm font-semibold">
+                    <i class="fa-solid fa-lightbulb text-amber-500"></i>
+                    <span id="level-instruction">Susun kubus seimbang hingga mencapai garis target merah!</span>
+                </div>
+            </div>
+
+            <!-- Stats: Meteran Tinggi, Keseimbangan, Timer & Kontrol -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <!-- Status Keseimbangan -->
+                <div class="hidden md:flex items-center gap-1.5 bg-emerald-100 border border-emerald-300 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold" id="balance-badge">
+                    <i class="fa-solid fa-scale-balanced text-emerald-600"></i>
+                    <span id="balance-text">Stabil</span>
+                </div>
+
+                <!-- Indikator Ketinggian -->
+                <div class="flex items-center gap-1.5 bg-amber-100 border border-amber-300 text-amber-800 px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
+                    <i class="fa-solid fa-ruler-vertical text-amber-600"></i>
+                    <span>Tinggi: <span id="current-height-text">0</span>/<span id="target-height-text">3</span></span>
+                </div>
+
+                <!-- Status Timer -->
+                <div id="timer-container" class="hidden flex items-center gap-1.5 bg-red-100 border border-red-300 text-red-700 px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
+                    <i class="fa-solid fa-clock animate-pulse"></i>
+                    <span id="timer-text">60s</span>
+                </div>
+
+                <!-- Toggle Suara -->
+                <button id="sound-btn" onclick="toggleSound()" class="w-9 h-9 sm:w-10 sm:h-10 bg-sky-400 hover:bg-sky-500 text-white rounded-2xl shadow-md flex items-center justify-center transition active:scale-95">
+                    <i class="fa-solid fa-volume-high text-sm sm:text-base" id="sound-icon"></i>
+                </button>
+
+                <!-- Restart Level -->
+                <button onclick="restartCurrentLevel()" class="w-9 h-9 sm:w-10 sm:h-10 bg-emerald-400 hover:bg-emerald-500 text-white rounded-2xl shadow-md flex items-center justify-center transition active:scale-95" title="Ulangi Level Ini">
+                    <i class="fa-solid fa-rotate-right text-sm sm:text-base"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Area Bermain Canvas Utama -->
+        <main class="flex-1 relative bg-gradient-to-b from-sky-200 via-sky-100 to-amber-50 overflow-hidden">
+            <canvas id="game-canvas"></canvas>
+        </main>
+    </div>
+
+    <!-- MODAL 1: Panduan Mulai Level -->
+    <div id="start-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 transition-opacity">
+        <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-11/12 text-center shadow-2xl border-4 border-amber-300 transform transition-all scale-100">
+            <div class="w-20 h-20 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl shadow-inner">
+                <i class="fa-solid fa-hand-pointer animate-bounce"></i>
+            </div>
+            <h2 id="modal-start-title" class="text-2xl sm:text-3xl font-bold text-slate-800 mb-2">Level 1</h2>
+            <p id="modal-start-desc" class="text-slate-600 mb-6 text-sm sm:text-base leading-relaxed">
+                Klik & tahan kubus di sebelah kiri, geser (drag) ke atas meja sebelah kanan, lalu tumpuk seimbang sampai menyentuh garis target!
+            </p>
+            <button onclick="closeStartModal()" class="w-full bg-emerald-400 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-2xl text-lg shadow-lg hover:shadow-xl transition transform active:scale-95">
+                Mulai Susun! <i class="fa-solid fa-play ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Kemenangan Level -->
+    <div id="win-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-11/12 text-center shadow-2xl border-4 border-yellow-400">
+            <h2 class="text-3xl font-extrabold text-amber-500 mb-1">MENARA KOKOH! 🎉</h2>
+            <p class="text-slate-500 text-sm mb-4">Hebat! Kamu berhasil menyusun menara dengan seimbang!</p>
+
+            <!-- Rating Bintang -->
+            <div class="flex justify-center gap-3 my-4">
+                <i class="fa-solid fa-star text-4xl text-amber-400 star-anim" style="animation-delay: 0.1s"></i>
+                <i class="fa-solid fa-star text-5xl text-amber-400 star-anim" style="animation-delay: 0.3s"></i>
+                <i class="fa-solid fa-star text-4xl text-amber-400 star-anim" style="animation-delay: 0.5s"></i>
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button onclick="restartCurrentLevel()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 rounded-2xl transition active:scale-95">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> Ulangi
+                </button>
+                <button id="next-btn" onclick="nextLevel()" class="flex-1 bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold py-3 rounded-2xl shadow-lg transition active:scale-95">
+                    Lanjut <i class="fa-solid fa-arrow-right ml-1"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: Game Over (Menara Terjatuh / Waktu Habis) -->
+    <div id="fail-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-11/12 text-center shadow-2xl border-4 border-red-400">
+            <div class="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-3 text-3xl">
+                <i class="fa-solid fa-building-circle-xmark"></i>
+            </div>
+            <h2 id="fail-modal-title" class="text-2xl font-bold text-slate-800 mb-2">Menara Roboh! 💥</h2>
+            <p id="fail-modal-desc" class="text-slate-600 mb-6 text-sm">Kubus terjatuh dan menara tidak seimbang. Jangan menyerah, ayo tumpuk lagi lebih presisi!</p>
+            <button onclick="restartCurrentLevel()" class="w-full bg-emerald-400 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-2xl text-lg shadow-lg transition active:scale-95">
+                <i class="fa-solid fa-rotate-right mr-2"></i> Coba Lagi Level Ini
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL 4: Pilih Level -->
+    <div id="level-select-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-11/12 text-center shadow-2xl border-4 border-sky-300">
+            <h2 class="text-2xl font-bold text-slate-800 mb-4">Pilih Level Menara</h2>
+            <div id="level-buttons-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3 my-4">
+                <!-- Level buttons generated dynamically -->
+            </div>
+            <button onclick="closeLevelSelect()" class="mt-4 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-2.5 rounded-2xl transition">
+                Tutup
+            </button>
+        </div>
+    </div>
+
+    <!-- LOGIKA GAME & FISIKA -->
+    <script>
+        /* ================= AUDIO SYNTHESIZER (Web Audio API) ================= */
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playGrab() {
+                if (this.muted) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(320, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playDrop() {
+                if (this.muted) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(180, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(350, this.ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.1);
+            }
+
+            playCrash() {
+                if (this.muted) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(60, this.ctx.currentTime + 0.4);
+                gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.4);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.4);
+            }
+
+            playWin() {
+                if (this.muted) return;
+                this.init();
+                const notes = [261.63, 329.63, 392.00, 523.25];
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.1);
+                    gain.gain.setValueAtTime(0.3, this.ctx.currentTime + idx * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.1 + 0.3);
+                    osc.connect(gain); gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + idx * 0.1);
+                    osc.stop(this.ctx.currentTime + idx * 0.1 + 0.3);
+                });
+            }
+        }
+
+        const sound = new SoundFX();
+
+        function toggleSound() {
+            sound.muted = !sound.muted;
+            const icon = document.getElementById('sound-icon');
+            const btn = document.getElementById('sound-btn');
+            if (sound.muted) {
+                icon.className = 'fa-solid fa-volume-xmark text-sm sm:text-base';
+                btn.classList.replace('bg-sky-400', 'bg-slate-400');
+            } else {
+                icon.className = 'fa-solid fa-volume-high text-sm sm:text-base';
+                btn.classList.replace('bg-slate-400', 'bg-sky-400');
+                sound.playGrab();
+            }
+        }
+
+        /* ================= KONFIGURASI LEVEL ================= */
+        const CUBE_COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+
+        const LEVELS = [
+            {
+                id: 1,
+                title: "Level 1: Menara Rendah",
+                instruction: "Tumpuk 3 kubus secara seimbang di atas meja hingga menyentuh garis target!",
+                targetCount: 3,
+                cubeWidth: 70,
+                cubeHeight: 55,
+                timer: null
+            },
+            {
+                id: 2,
+                title: "Level 2: Menara Sedang",
+                instruction: "Tumpuk 5 kubus ke atas secara perlahan agar tidak robob!",
+                targetCount: 5,
+                cubeWidth: 65,
+                cubeHeight: 50,
+                timer: null
+            },
+            {
+                id: 3,
+                title: "Level 3: Menara Tinggi Presisi",
+                instruction: "Tumpuk 7 kubus ramping ke atas. Jaga titik keseimbangan!",
+                targetCount: 7,
+                cubeWidth: 58,
+                cubeHeight: 45,
+                timer: null
+            },
+            {
+                id: 4,
+                title: "Level 4: Menara Super Tinggi",
+                instruction: "Susun 9 kubus menara tinggi. Pasang dengan tepat di tengah!",
+                targetCount: 9,
+                cubeWidth: 52,
+                cubeHeight: 40,
+                timer: null
+            },
+            {
+                id: 5,
+                title: "Level 5: Menara Impian",
+                instruction: "Tantangan Utama: Tumpuk 12 kubus sebelum waktu habis!",
+                targetCount: 12,
+                cubeWidth: 46,
+                cubeHeight: 36,
+                timer: 65
+            }
+        ];
+
+        /* ================= STATE & FISIKA MATTER.JS ================= */
+        let Engine = Matter.Engine,
+            Render = Matter.Render,
+            Runner = Matter.Runner,
+            Bodies = Matter.Bodies,
+            Composite = Matter.Composite,
+            Constraint = Matter.Constraint,
+            Mouse = Matter.Mouse,
+            MouseConstraint = Matter.MouseConstraint,
+            Events = Matter.Events,
+            Body = Matter.Body;
+
+        let engine, render, runner, mouseConstraint;
+        let canvas, ctx;
+        let currentLevelIdx = 0;
+        let gameActive = false;
+        let timerInterval = null;
+        let timeRemaining = 0;
+
+        let tableBody = null;
+        let floorSensor = null;
+        let cubesInGame = [];
+        let currentSpawnIndex = 0; // Menyimpan indeks kubus berikutnya yang akan dimunculkan
+        let targetY = 0;
+        let winCheckTimer = 0;
+
+        /* ================= INISIALISASI GAME ================= */
+        function initPhysicsEngine() {
+            canvas = document.getElementById('game-canvas');
+            const container = canvas.parentElement;
+
+            engine = Engine.create({
+                gravity: { x: 0, y: 1 }
+            });
+
+            render = Render.create({
+                canvas: canvas,
+                engine: engine,
+                options: {
+                    width: container.clientWidth,
+                    height: container.clientHeight,
+                    wireframes: false,
+                    background: 'transparent'
+                }
+            });
+
+            Render.run(render);
+            runner = Runner.create();
+            Runner.run(runner, engine);
+
+            // Kontrol Mouse Matter.js
+            const mouse = Mouse.create(render.canvas);
+            mouseConstraint = MouseConstraint.create(engine, {
+                mouse: mouse,
+                constraint: {
+                    stiffness: 0.2,
+                    render: { visible: true, strokeStyle: '#f59e0b', lineWidth: 3 }
+                }
+            });
+
+            Composite.add(engine.world, mouseConstraint);
+
+            // Event Suara & Aktifkan Fisika saat Drag
+            Events.on(mouseConstraint, 'mousedown', function(evt) {
+                if (mouseConstraint.body && mouseConstraint.body.label === 'cube') {
+                    // Jika kubus masih di rak (isStatic), aktifkan gravitasi/dinamis saat di-drag pertama kali
+                    if (mouseConstraint.body.isStatic) {
+                        Body.setStatic(mouseConstraint.body, false);
+                    }
+                    sound.playGrab();
+                }
+            });
+
+            Events.on(mouseConstraint, 'mouseup', function(evt) {
+                if (mouseConstraint.body && mouseConstraint.body.label === 'cube') {
+                    sound.playDrop();
+                }
+            });
+
+            // Loop Pemeriksaan Status Fisika (Keseimbangan & Kemenangan)
+            Events.on(engine, 'afterUpdate', function() {
+                if (!gameActive) return;
+                checkTowerStatus();
+            });
+
+            // Mendaftarkan event afterRender satu kali di awal
+            Events.on(render, 'afterRender', drawOverlayInfo);
+
+            window.addEventListener('resize', handleResize);
+        }
+
+        function handleResize() {
+            if (!render) return;
+            const container = canvas.parentElement;
+            render.canvas.width = container.clientWidth;
+            render.canvas.height = container.clientHeight;
+            render.options.width = container.clientWidth;
+            render.options.height = container.clientHeight;
+        }
+
+        function loadLevel(levelIdx) {
+            currentLevelIdx = levelIdx;
+            const level = LEVELS[levelIdx];
+            gameActive = false;
+
+            // Reset Timer
+            clearInterval(timerInterval);
+            const timerContainer = document.getElementById('timer-container');
+            if (level.timer) {
+                timeRemaining = level.timer;
+                document.getElementById('timer-text').innerText = `${timeRemaining}s`;
+                timerContainer.classList.remove('hidden');
+            } else {
+                timerContainer.classList.add('hidden');
+            }
+
+            // Update UI
+            document.getElementById('level-title-display').innerText = `Level ${level.id}`;
+            document.getElementById('level-instruction').innerText = level.instruction;
+            document.getElementById('target-height-text').innerText = level.targetCount;
+            document.getElementById('current-height-text').innerText = '0';
+
+            document.getElementById('modal-start-title').innerText = level.title;
+            document.getElementById('modal-start-desc').innerText = level.instruction;
+            document.getElementById('start-modal').classList.remove('hidden');
+
+            setupWorld(level);
+        }
+
+        function closeStartModal() {
+            document.getElementById('start-modal').classList.add('hidden');
+            sound.init();
+            gameActive = true;
+
+            const level = LEVELS[currentLevelIdx];
+            if (level.timer) {
+                startTimer();
+            }
+        }
+
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                if (!gameActive) return;
+                timeRemaining--;
+                document.getElementById('timer-text').innerText = `${timeRemaining}s`;
+                if (timeRemaining <= 0) {
+                    clearInterval(timerInterval);
+                    triggerGameOver('Waktu Habis! ⏰', 'Waktu menyusun menara telah habis. Ayo coba lagi!');
+                }
+            }, 1000);
+        }
+
+        function setupWorld(level) {
+            // Bersihkan objek lama di dunia fisika
+            Composite.clear(engine.world, false);
+            Composite.add(engine.world, mouseConstraint);
+
+            const width = render.canvas.width;
+            const height = render.canvas.height;
+
+            // 1. Meja Penyusunan (Dasar Utama di sebelah kanan)
+            const tableWidth = Math.min(width * 0.35, 260);
+            const tableHeight = 24;
+            const tableX = width * 0.70; // Area kanan
+            const tableY = height - 60;
+
+            tableBody = Bodies.rectangle(tableX, tableY, tableWidth, tableHeight, {
+                isStatic: true,
+                friction: 0.9,
+                render: { fillStyle: '#854d0e', strokeStyle: '#713f12', lineWidth: 3 }
+            });
+
+            // Tiang Kaki Meja
+            const leg = Bodies.rectangle(tableX, tableY + 35, 30, 70, {
+                isStatic: true,
+                render: { fillStyle: '#a16207' }
+            });
+
+            // 2. Lantai Dasar (Kondisi Game Over jika kubus jatuh ke sini)
+            floorSensor = Bodies.rectangle(width / 2, height + 20, width * 2, 50, {
+                isStatic: true,
+                isSensor: true,
+                label: 'floor'
+            });
+
+            // 3. Menghitung Posisi Garis Target Ketinggian
+            const requiredTowerHeight = (level.targetCount * level.cubeHeight);
+            targetY = tableY - (tableHeight / 2) - requiredTowerHeight;
+
+            // Dinding pembatas kiri-kanan luar
+            const leftWall = Bodies.rectangle(-20, height / 2, 40, height * 2, { isStatic: true });
+            const rightWall = Bodies.rectangle(width + 20, height / 2, 40, height * 2, { isStatic: true });
+
+            Composite.add(engine.world, [tableBody, leg, floorSensor, leftWall, rightWall]);
+
+            // 4. Inisialisasi daftar kubus (kosong dulu, dimunculkan satu persatu)
+            cubesInGame = [];
+            currentSpawnIndex = 0;
+            
+            // Munculkan kubus pertama di rak samping
+            spawnNextCube();
+        }
+
+        // Fungsi untuk memunculkan kubus berikutnya satu per satu di rak samping
+        function spawnNextCube() {
+            const level = LEVELS[currentLevelIdx];
+            if (currentSpawnIndex >= level.targetCount) return;
+
+            const width = render.canvas.width;
+            const height = render.canvas.height;
+            const rackX = Math.max(width * 0.15, 90);
+            const rackY = height / 2; // Posisi tetap di tengah rak samping
+
+            const color = CUBE_COLORS[currentSpawnIndex % CUBE_COLORS.length];
+
+            const cube = Bodies.rectangle(rackX, rackY, level.cubeWidth, level.cubeHeight, {
+                label: 'cube',
+                isStatic: true, // Diam di rak samping sebelum di-drag
+                density: 0.002,
+                friction: 0.8,
+                frictionAir: 0.02,
+                restitution: 0.05,
+                chamfer: { radius: 6 },
+                render: {
+                    fillStyle: color,
+                    strokeStyle: '#ffffff',
+                    lineWidth: 2
+                }
+            });
+
+            cubesInGame.push(cube);
+            Composite.add(engine.world, cube);
+        }
+
+        /* ================= OVERLAY CANVAS DEKORASI ================= */
+        function drawOverlayInfo() {
+            const ctx = render.context;
+            const width = render.canvas.width;
+            const height = render.canvas.height;
+            const level = LEVELS[currentLevelIdx];
+
+            // 1. Gambar Area Rak Samping Kiri (Tempat Ambil Kubus)
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.strokeStyle = 'rgba(147, 197, 253, 0.8)';
+            ctx.lineWidth = 2;
+            const rackWidth = Math.max(level.cubeWidth + 40, 130);
+            ctx.beginPath();
+            ctx.roundRect(15, 15, rackWidth, height - 50, 16);
+            ctx.fill();
+            ctx.stroke();
+
+            // Label Rak Samping
+            ctx.fillStyle = '#1e3a8a';
+            ctx.font = 'bold 13px Fredoka, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('AMBIL KUBUS 📦', 15 + (rackWidth / 2), 38);
+            ctx.restore();
+
+            // 2. Gambar Garis Merah Putus-Putus Target Ketinggian
+            ctx.save();
+            ctx.beginPath();
+            ctx.setLineDash([8, 6]);
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 3;
+            ctx.moveTo(width * 0.52, targetY);
+            ctx.lineTo(width * 0.88, targetY);
+            ctx.stroke();
+
+            // Label Target
+            ctx.fillStyle = '#ef4444';
+            ctx.font = 'bold 13px Fredoka, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('🎯 TARGET TINGGI MENARA', width * 0.52, targetY - 8);
+            ctx.restore();
+
+            // 3. Gambar Rumput / Dekorasi Bawah
+            ctx.save();
+            ctx.fillStyle = '#10b981';
+            ctx.fillRect(0, render.canvas.height - 20, width, 20);
+            ctx.restore();
+        }
+
+        /* ================= FISIKA STATUS & CEK ROBOH ================= */
+        function checkTowerStatus() {
+            let highestPoint = tableBody.position.y;
+            let totalTiltAngle = 0;
+            let activeCubeCount = 0;
+            let hasActiveMovingCube = false;
+
+            cubesInGame.forEach(cube => {
+                // Cek apakah kubus menyentuh lantai (Roboh / Game Over)
+                if (cube.position.y > tableBody.position.y + 30) {
+                    triggerGameOver('Menara Roboh! 💥', 'Awas! Kubus terjatuh meleset dari meja. Ayo susun lagi!');
+                    return;
+                }
+
+                // Cek apakah kubus sudah dipindahkan dari rak samping ke area meja
+                if (cube.position.x > render.canvas.width * 0.35 && cube.position.y < tableBody.position.y) {
+                    activeCubeCount++;
+                    const topY = cube.position.y - (LEVELS[currentLevelIdx].cubeHeight / 2);
+                    if (topY < highestPoint) {
+                        highestPoint = topY;
+                    }
+                    totalTiltAngle += Math.abs(cube.angle);
+                }
+
+                // Cek apakah kubus yang sedang di rak samping sudah mulai digeser/diambil
+                if (cube.isStatic === false) {
+                    hasActiveMovingCube = true;
+                }
+            });
+
+            // Jika kubus di rak sudah mulai digeser, panggil kubus berikutnya jika masih ada sisa target
+            const level = LEVELS[currentLevelIdx];
+            if (hasActiveMovingCube && currentSpawnIndex < level.targetCount - 1) {
+                // Pastikan kubus sebelumnya sudah cukup jauh dari titik spawn rak
+                const latestCube = cubesInGame[cubesInGame.length - 1];
+                const rackX = Math.max(render.canvas.width * 0.15, 90);
+                const rackY = render.canvas.height / 2;
+                const dist = Math.hypot(latestCube.position.x - rackX, latestCube.position.y - rackY);
+                
+                if (dist > 70) {
+                    currentSpawnIndex++;
+                    spawnNextCube();
+                }
+            }
+
+            if (!gameActive) return;
+
+            // Hitung Ketinggian Realtime
+            const currentHeightPx = Math.max(0, (tableBody.position.y - (level.cubeHeight/2)) - highestPoint);
+            const levelTargetPx = (level.targetCount * level.cubeHeight) - 10;
+
+            const heightProgress = Math.min(level.targetCount, Math.floor((currentHeightPx / levelTargetPx) * level.targetCount));
+            document.getElementById('current-height-text').innerText = heightProgress;
+
+            // Indicator Keseimbangan (Balance Meter)
+            const balanceBadge = document.getElementById('balance-badge');
+            const balanceText = document.getElementById('balance-text');
+
+            if (totalTiltAngle > 0.45) {
+                balanceBadge.className = "hidden md:flex items-center gap-1.5 bg-red-100 border border-red-300 text-red-800 px-3 py-1 rounded-full text-xs font-bold animate-bounce";
+                balanceText.innerText = "Miring!";
+            } else if (totalTiltAngle > 0.2) {
+                balanceBadge.className = "hidden md:flex items-center gap-1.5 bg-amber-100 border border-amber-300 text-amber-800 px-3 py-1 rounded-full text-xs font-bold";
+                balanceText.innerText = "Goyah";
+            } else {
+                balanceBadge.className = "hidden md:flex items-center gap-1.5 bg-emerald-100 border border-emerald-300 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold";
+                balanceText.innerText = "Stabil";
+            }
+
+            // Cek Kemenangan (Menara Mencapai/Melampaui Garis Target dan Diam Stabil)
+            if (highestPoint <= targetY + 5 && activeCubeCount >= level.targetCount) {
+                let isMoving = false;
+                cubesInGame.forEach(c => {
+                    if (c.speed > 0.35) isMoving = true;
+                });
+
+                if (!isMoving) {
+                    winCheckTimer++;
+                    if (winCheckTimer > 40) { // Stabil selama ~0.7 detik
+                        triggerWin();
+                    }
+                } else {
+                    winCheckTimer = 0;
+                }
+            } else {
+                winCheckTimer = 0;
+            }
+        }
+
+        /* ================= EVENT WIN / FAIL ================= */
+        function triggerWin() {
+            if (!gameActive) return;
+            gameActive = false;
+            clearInterval(timerInterval);
+            sound.playWin();
+
+            confetti({
+                particleCount: 120,
+                spread: 80,
+                origin: { y: 0.6 }
+            });
+
+            setTimeout(() => {
+                const winModal = document.getElementById('win-modal');
+                const nextBtn = document.getElementById('next-btn');
+                
+                if (currentLevelIdx >= LEVELS.length - 1) {
+                    nextBtn.innerHTML = `Selesai <i class="fa-solid fa-flag-checkered ml-1"></i>`;
+                } else {
+                    nextBtn.innerHTML = `Lanjut <i class="fa-solid fa-arrow-right ml-1"></i>`;
+                }
+
+                winModal.classList.remove('hidden');
+            }, 300);
+        }
+
+        function triggerGameOver(title, desc) {
+            if (!gameActive) return;
+            gameActive = false;
+            clearInterval(timerInterval);
+            sound.playCrash();
+
+            document.getElementById('fail-modal-title').innerText = title;
+            document.getElementById('fail-modal-desc').innerText = desc;
+            document.getElementById('fail-modal').classList.remove('hidden');
+        }
+
+        function nextLevel() {
+            document.getElementById('win-modal').classList.add('hidden');
+            if (currentLevelIdx < LEVELS.length - 1) {
+                loadLevel(currentLevelIdx + 1);
+            } else {
+                openLevelSelect();
+            }
+        }
+
+        function restartCurrentLevel() {
+            document.getElementById('win-modal').classList.add('hidden');
+            document.getElementById('fail-modal').classList.add('hidden');
+            loadLevel(currentLevelIdx);
+        }
+
+        /* ================= LEVEL SELECT ================= */
+        function openLevelSelect() {
+            const grid = document.getElementById('level-buttons-grid');
+            grid.innerHTML = '';
+
+            LEVELS.forEach((lvl, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `p-3 rounded-2xl border-2 font-bold flex flex-col items-center justify-center transition active:scale-95 ${
+                    idx === currentLevelIdx 
+                        ? 'bg-amber-400 border-amber-500 text-amber-950 shadow-md' 
+                        : 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
+                }`;
+                btn.innerHTML = `
+                    <span class="text-base sm:text-lg">Level ${lvl.id}</span>
+                    <span class="text-[11px] sm:text-xs font-normal opacity-75">${lvl.targetCount} Kubus</span>
+                `;
+                btn.onclick = () => {
+                    closeLevelSelect();
+                    loadLevel(idx);
+                };
+                grid.appendChild(btn);
+            });
+
+            document.getElementById('level-select-modal').classList.remove('hidden');
+        }
+
+        function closeLevelSelect() {
+            document.getElementById('level-select-modal').classList.add('hidden');
+        }
+
+        // Run game onload
+        window.onload = () => {
+            initPhysicsEngine();
+            loadLevel(0);
+        };
+    </script>
+</body>
+</html>
